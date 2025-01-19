@@ -1,16 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>交互式图形系统</title>
     <style>
-        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; }
-        #toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
-        #toolbar button { padding: 10px; font-size: 14px; cursor: pointer; }
-        canvas { border: 1px solid black; }
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        #toolbar button {
+            padding: 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        canvas {
+            border: 1px solid black;
+        }
     </style>
 </head>
+
 <body>
     <h1>交互式图形系统</h1>
     <div id="toolbar">
@@ -28,7 +49,7 @@
         <button onclick="setMode('seedFill')">种子填充</button>
         <button onclick="setMode('scanFill')">扫描线填充</button>
         <input type="color" id="colorPicker" value="#ff0000" style="margin-right: 10px;">
-        <div>        <br>
+        <div> <br>
             命令：</div>
         <select id="commandSelect">
             <option value="drawPoint">绘制点</option>
@@ -41,655 +62,685 @@
         <button onclick="executeCommand()">执行</button>
         <br>
         <button onclick="clearCanvas()">清空画布</button>
-
+        <button onclick="document.getElementById('fileInput').click()">加载文件</button>
+        <button onclick="saveToFile()">保存文件</button>
     </div>
     <canvas id="canvas" width="800" height="600"></canvas>
-    <script src="main.js"></script>
+    <input type="file" id="fileInput" style="display: none" onchange="handleFileLoad(event)">
 </body>
+
 </html>
 
 <script>
 
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-let currentMode = null; // 当前模式
-let curvePoints = []; // 存储曲线控制点
-let shapes = []; // 图形列表，每个图形形状带有类型和属性，例如：
-/* 示例
-shapes.push({
-    type: 'circle',
-    centerX: 100,
-    centerY: 100,
-    radius: 50,
-    selected: false // 默认未选中
-});
-*/
-
-canvas.addEventListener('mousedown', handleMouseDown);
-canvas.addEventListener('mouseup', handleMouseUp);
-
-function setMode(mode) {
-    currentMode = mode;
-    // 重置字体大小填写框，仅在绘制文字时需要
-    if (mode !== 'text') {
-        const fontInput = document.getElementById('fontSizeInput');
-        if (fontInput) {
-            fontInput.style.display = 'none';
-        }
-    }
-}
-
-function handleMouseDown(event) {
-    const { offsetX: x, offsetY: y } = event;
-    if (currentMode === 'seedFill') {
-        const selectedShape = shapes.find(shape => shape.selected);
-        if (!selectedShape) {
-            alert("请先选择一个对象进行填充！");
-            return;
-        }
-
-        const fillColor = document.getElementById('colorPicker').value;
-        if (selectedShape.type === 'circle') {
-            fillCircle(selectedShape, fillColor);
-        } else {
-            alert("该对象不支持填充操作！请选择圆形！");
-        }
-
-    } if (currentMode === 'scanFill') {
-    const selectedShape = shapes.find(shape => shape.selected);
-    if (selectedShape) {
-        const fillColor = document.getElementById('colorPicker').value;
-
-        if (selectedShape.type === 'polygon') {
-            fillPolygon(selectedShape, fillColor); // 多边形填充
-        } else if (selectedShape.type === 'circle') {
-            fillCircleScan(selectedShape, fillColor); // 圆形扫描线填充
-        } else {
-            alert("该对象不支持扫描线填充！");
-        }
-    } else {
-        alert("请先选择一个对象进行扫描线填充！");
-    }
-}
-else  if (currentMode === 'select') {
-        // 进入选择模式：检测是否点击了某个图形
-        let selectedShape = null;
-        shapes.forEach(shape => {
-            if (shape.type === 'point' && isNearPoint(x, y, shape.x, shape.y)) {
-                selectedShape = shape;
-            } else if (shape.type === 'line' && isNearLine(x, y, shape)) {
-                selectedShape = shape;
-            } else if (shape.type === 'circle' && isNearCircle(x, y, shape)) {
-                selectedShape = shape;
-            } else if (shape.type === 'text' && isNearText(x, y, shape)) {
-                selectedShape = shape;
-            }
-        });
-
-        // 如果选中图形，则标记
-        if (selectedShape) {
-            shapes.forEach(shape => (shape.selected = false)); // 清除之前的选中
-            selectedShape.selected = true;
-            console.log('选中图形：', selectedShape);
-        } else {
-            console.log('未选中任何图形');
-        }
-
-        redrawCanvas(); // 重绘画布以显示选中状态
-    } else if (currentMode === 'scanFill') {
-    const selectedShape = shapes.find(shape => shape.selected);
-    if (selectedShape && selectedShape.type === 'polygon') {
-        const fillColor = document.getElementById('colorPicker').value;
-        fillPolygon(selectedShape, fillColor);
-    } else {
-        alert("请先选择一个多边形进行扫描线填充！");
-    }
-} else{
-        // 进入绘图模式：处理点、直线、圆等的绘制
-        if (currentMode === 'point') {
-            drawPoint(x, y);
-        } else if (currentMode === 'line') {
-            startLine(x, y); // 保存直线起点
-        } else if (currentMode === 'circle') {
-            startCircle(x, y); // 保存圆心
-        } else if (currentMode === 'curve') {
-            curvePoints.push({ x, y });
-            drawPoint(x, y); // 绘制控制点
-            if (curvePoints.length === 4) {
-                drawBezierCurve(curvePoints); // 绘制曲线
-                curvePoints = []; // 清空控制点
-            }
-        } else if (currentMode === 'text') {
-            const text = prompt("请输入要绘制的文字：");
-            if (text) drawText(x, y, text);
-        }
-    }
-}
-
-
-// 判断是否靠近点
-function isNearPoint(x, y, px, py) {
-    const threshold = 5; // 检测阈值
-    return Math.abs(x - px) <= threshold && Math.abs(y - py) <= threshold;
-}
-
-
-// 判断是否靠近直线
-function isNearLine(x, y, line) {
-    const { startX, startY, endX, endY } = line;
-    const dist = pointToLineDistance(x, y, startX, startY, endX, endY);
-    return dist <= 5; // 允许一定误差
-}
-
-function pointToLineDistance(px, py, x1, y1, x2, y2) {
-    const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
-    const dot = A * C + B * D;
-    const lenSq = C * C + D * D;
-    const param = lenSq !== 0 ? dot / lenSq : -1;
-
-    let xx, yy;
-    if (param < 0) {
-        xx = x1; yy = y1;
-    } else if (param > 1) {
-        xx = x2; yy = y2;
-    } else {
-        xx = x1 + param * C;
-        yy = y1 + param * D;
-    }
-
-    const dx = px - xx, dy = py - yy;
-    return Math.sqrt(dx * dx + dy * dy);
-}
-
-
-// 判断是否靠近圆
-function isNearCircle(x, y, circle) {
-    const dx = x - circle.centerX;
-    const dy = y - circle.centerY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    return Math.abs(dist - circle.radius) <= 5; // 检测是否在圆边附近
-}
-
-
-// 判断是否靠近文字（可根据文字宽高调整）
-function isNearText(x, y, text) {
-    ctx.font = '16px Arial';
-    const textWidth = ctx.measureText(text.text).width;
-    const textHeight = 16; // 假设字体大小为 16px
-    return x >= text.x && x <= text.x + textWidth && y <= text.y && y >= text.y - textHeight;
-}
-
-
-
-
-function handleMouseUp(event) {
-    const { offsetX: x, offsetY: y } = event;
-    if (currentMode === 'line') finishLine(x, y);
-    else if (currentMode === 'circle') finishCircle(x, y);
-}
-
-// 点
-function drawPoint(x, y) {
-    ctx.fillRect(x, y, 2, 2);
-    shapes.push({ type: 'point', x, y });
-}
-
-// 直线
-let startX, startY;
-function startLine(x, y) {
-    startX = x; startY = y;
-}
-function finishLine(x, y) {
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    shapes.push({ type: 'line', startX, startY, endX: x, endY: y });
-}
-
-// 圆
-let circleX, circleY;
-function startCircle(x, y) {
-    circleX = x; circleY = y;
-}
-function finishCircle(x, y) {
-    const radius = Math.sqrt((x - circleX) ** 2 + (y - circleY) ** 2);
-    ctx.beginPath();
-    ctx.arc(circleX, circleY, radius, 0, 2 * Math.PI);
-    ctx.stroke();
-    shapes.push({ type: 'circle', centerX: circleX, centerY: circleY, radius });
-}
-
-// 曲线
-function drawBezierCurve(points) {
-    if (points.length === 4) { // 三次贝塞尔曲线
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-        ctx.bezierCurveTo(
-            points[1].x, points[1].y,
-            points[2].x, points[2].y,
-            points[3].x, points[3].y
-        );
-        ctx.stroke();
-        shapes.push({ type: 'bezier', points });
-    } else if (points.length === 3) { // 二次贝塞尔曲线
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-        ctx.quadraticCurveTo(
-            points[1].x, points[1].y,
-            points[2].x, points[2].y
-        );
-        ctx.stroke();
-        shapes.push({ type: 'quadratic', points });
-    }
-}
-
-// 文字
-function drawText(x, y, text) {
-    const fontSize = parseInt(prompt("请输入字体大小：", "16")) || 16;
-    const fontColor = document.getElementById('colorPicker').value;
-    ctx.font = `${fontSize}px Arial`;
-    ctx.fillStyle = fontColor;
-    ctx.fillText(text, x, y);
-    shapes.push({ type: 'text', x, y, text, fontSize, fontColor });
-}
-
-
-// 几何变换
-function applyTransform(type) {
-    const selectedShape = shapes.find(shape => shape.selected);
-    if (!selectedShape) {
-        alert('请先选中一个对象！');
-        return;
-    }
-
-    if (type === 'translate') {
-        const dx = parseFloat(prompt('输入平移 x 距离:'));
-        const dy = parseFloat(prompt('输入平移 y 距离:'));
-        if (selectedShape.type === 'point') {
-            selectedShape.x += dx;
-            selectedShape.y += dy;
-        } else if (selectedShape.type === 'line') {
-            selectedShape.startX += dx;
-            selectedShape.startY += dy;
-            selectedShape.endX += dx;
-            selectedShape.endY += dy;
-        } else if (selectedShape.type === 'circle') {
-            selectedShape.centerX += dx;
-            selectedShape.centerY += dy;
-        }
-        redrawCanvas();
-    } else if (type === 'rotate') {
-        const angle = parseFloat(prompt('输入旋转角度（度数）:')) * (Math.PI / 180);
-        if (selectedShape.type === 'line') {
-            const centerX = (selectedShape.startX + selectedShape.endX) / 2;
-            const centerY = (selectedShape.startY + selectedShape.endY) / 2;
-
-            // 旋转起点和终点
-            [selectedShape.startX, selectedShape.startY] = rotatePoint(
-                selectedShape.startX, selectedShape.startY, centerX, centerY, angle
-            );
-            [selectedShape.endX, selectedShape.endY] = rotatePoint(
-                selectedShape.endX, selectedShape.endY, centerX, centerY, angle
-            );
-        }
-        redrawCanvas();
-    } else if (type === 'scale') {
-        const factor = parseFloat(prompt('输入缩放比例:'));
-        if (selectedShape.type === 'line') {
-            const centerX = (selectedShape.startX + selectedShape.endX) / 2;
-            const centerY = (selectedShape.startY + selectedShape.endY) / 2;
-
-            // 缩放起点和终点
-            selectedShape.startX = centerX + (selectedShape.startX - centerX) * factor;
-            selectedShape.startY = centerY + (selectedShape.startY - centerY) * factor;
-            selectedShape.endX = centerX + (selectedShape.endX - centerX) * factor;
-            selectedShape.endY = centerY + (selectedShape.endY - centerY) * factor;
-        } else if (selectedShape.type === 'circle') {
-            selectedShape.radius *= factor;
-        } else if (selectedShape.type === 'polygon') {
-            const centerX = selectedShape.points.reduce((sum, p) => sum + p.x, 0) / selectedShape.points.length;
-            const centerY = selectedShape.points.reduce((sum, p) => sum + p.y, 0) / selectedShape.points.length;
-            selectedShape.points = selectedShape.points.map(p => ({
-                x: centerX + (p.x - centerX) * factor,
-                y: centerY + (p.y - centerY) * factor,
-            }));
-    }
-        redrawCanvas();
-        }
-}
-
-//
-function rotatePoint(x, y, cx, cy, angle) {
-    const dx = x - cx, dy = y - cy;
-    const newX = dx * Math.cos(angle) - dy * Math.sin(angle) + cx;
-    const newY = dx * Math.sin(angle) + dy * Math.cos(angle) + cy;
-    return [newX, newY];
-}
-
-
-
-
-// 重绘逻辑
-function redrawCanvas() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    shapes.forEach(shape => {
-        if (shape.selected) {
-            ctx.strokeStyle = 'red'; // 选中对象显示红色
-            ctx.lineWidth = 2;
-        } else {
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1;
-        }
-
-        if (shape.type === 'point') {
-            drawPoint(shape.x, shape.y);
-        } else if (shape.type === 'line') {
-            ctx.beginPath();
-            ctx.moveTo(shape.startX, shape.startY);
-            ctx.lineTo(shape.endX, shape.endY);
-            ctx.stroke();
-        } else if (shape.type === 'circle') {
-            ctx.beginPath();
-            ctx.arc(shape.centerX, shape.centerY, shape.radius, 0, 2 * Math.PI);
-            ctx.stroke();
-        } else if (shape.type === 'bezier' || shape.type === 'quadratic') {
-            drawBezierCurve(shape.points);
-        } else if (shape.type === 'text') {
-            drawText(shape.x, shape.y, shape.text);
-        } else if (selectedShape.type === 'fillPolygon') {
-            fillPolygon(selectedShape, fillColor);
-        }
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let currentMode = null; // 当前模式
+    let curvePoints = []; // 存储曲线控制点
+    let shapes = []; // 图形列表，每个图形形状带有类型和属性，例如：
+    /* 示例
+    shapes.push({
+        type: 'circle',
+        centerX: 100,
+        centerY: 100,
+        radius: 50,
+        selected: false // 默认未选中
     });
-}
+    */
 
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mouseup', handleMouseUp);
 
-
-// 裁剪
-function clipShape() {
-    const selectedShape = shapes.find(shape => shape.selected);
-    if (!selectedShape) {
-        alert('请先选中一个对象！');
-        return;
+    function loadData() {
+        document.getElementById('fileInput').click();
     }
-
-    const clipXMin = parseFloat(prompt('裁剪窗口 xMin:'));
-    const clipYMin = parseFloat(prompt('裁剪窗口 yMin:'));
-    const clipXMax = parseFloat(prompt('裁剪窗口 xMax:'));
-    const clipYMax = parseFloat(prompt('裁剪窗口 yMax:'));
-
-    
-    if (selectedShape.type === 'line') {
-        return cohenSutherland(selectedShape, clipXMin, clipYMin, clipXMax, clipYMax);
-    } else if (selectedShape.type === 'circle') {
-        return clipCircle(selectedShape, clipXMin, clipYMin, clipXMax, clipYMax);
-    }else if (selectedShape.type === 'polygon') {
-        return clipPolygon(selectedShape, clipXMin, clipYMin, clipXMax, clipYMax);
-    }
-    return selectedShape;
-    
-    redrawCanvas();
-    alert("裁剪完成！");
-}
-
-
-// 裁剪圆形
-function clipCircle(circle, xmin, ymin, xmax, ymax) {
-    const { centerX, centerY, radius } = circle;
-    // 检查圆心是否在裁剪窗口内
-    if (
-        centerX + radius < xmin ||
-        centerX - radius > xmax ||
-        centerY + radius < ymin ||
-        centerY - radius > ymax
-    ) {
-        alert("圆完全在裁剪窗口外，无需裁剪！");
-        return null; // 圆完全在裁剪窗口外
-    }
-    // 返回裁剪后的圆
-    return circle;
-}
-
-function cohenSutherland(line, xmin, ymin, xmax, ymax) {
-    const { startX, startY, endX, endY } = line;
-    let [x0, y0, x1, y1] = [startX, startY, endX, endY];
-
-    function computeOutCode(x, y) {
-        let code = 0;
-        if (x < xmin) code |= 1;
-        if (x > xmax) code |= 2;
-        if (y < ymin) code |= 4;
-        if (y > ymax) code |= 8;
-        return code;
-    }
-
-    let outCode0 = computeOutCode(x0, y0);
-    let outCode1 = computeOutCode(x1, y1);
-    let accept = false;
-
-    while (true) {
-        if (!(outCode0 | outCode1)) {
-            accept = true;
-            break;
-        } else if (outCode0 & outCode1) {
-            return null;
-        } else {
-            let x, y;
-            const outCodeOut = outCode0 ? outCode0 : outCode1;
-
-            if (outCodeOut & 8) {
-                x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
-                y = ymax;
-            } else if (outCodeOut & 4) {
-                x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
-                y = ymin;
-            } else if (outCodeOut & 2) {
-                y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
-                x = xmax;
-            } else if (outCodeOut & 1) {
-                y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
-                x = xmin;
-            }
-
-            if (outCodeOut === outCode0) {
-                x0 = x;
-                y0 = y;
-                outCode0 = computeOutCode(x0, y0);
-            } else {
-                x1 = x;
-                y1 = y;
-                outCode1 = computeOutCode(x1, y1);
+    function setMode(mode) {
+        currentMode = mode;
+        // 重置字体大小填写框，仅在绘制文字时需要
+        if (mode !== 'text') {
+            const fontInput = document.getElementById('fontSizeInput');
+            if (fontInput) {
+                fontInput.style.display = 'none';
             }
         }
     }
 
-    if (accept) {
-        return { type: 'line', startX: x0, startY: y0, endX: x1, endY: y1 };
-    }
-    return null;
-}
+    function handleMouseDown(event) {
+        const { offsetX: x, offsetY: y } = event;
+        if (currentMode === 'seedFill') {
+            const selectedShape = shapes.find(shape => shape.selected);
+            if (!selectedShape) {
+                alert("请先选择一个对象进行填充！");
+                return;
+            }
 
-function testClip() {
-    // 1. 清空画布并绘制示例图形
-    clearCanvas();
-
-    // 绘制示例图形
-    shapes = [
-        { type: 'line', startX: 50, startY: 50, endX: 300, endY: 300 },
-        { type: 'circle', centerX: 200, centerY: 200, radius: 100 },
-        { type: 'polygon', points: [{ x: 100, y: 400 }, { x: 150, y: 500 }, { x: 50, y: 500 }] }
-    ];
-
-    redrawCanvas();
-
-    // 2. 绘制裁剪窗口
-    const clipXMin = 100;
-    const clipYMin = 100;
-    const clipXMax = 250;
-    const clipYMax = 250;
-    drawClipWindow(clipXMin, clipYMin, clipXMax, clipYMax);
-
-    // 3. 执行裁剪
-    shapes = shapes.map(shape => {
-        if (shape.type === 'line') {
-            return cohenSutherland(shape, clipXMin, clipYMin, clipXMax, clipYMax);
-        } else if (shape.type === 'circle') {
-            return clipCircle(shape, clipXMin, clipYMin, clipXMax, clipYMax);
-        } else if (shape.type === 'polygon') {
-            return clipPolygon(shape, clipXMin, clipYMin, clipXMax, clipYMax);
-        }
-        return shape;
-    }).filter(shape => shape !== null);
-
-    // 4. 显示裁剪结果
-    setTimeout(() => {
-        clearCanvas(); // 清空原图形
-        redrawCanvas(); // 绘制裁剪结果
-        alert("裁剪完成！");
-    }, 1000); // 延迟 1 秒以直观观察裁剪窗口
-}
-
-
-function drawClipWindow(xmin, ymin, xmax, ymax) {
-    ctx.save();
-    ctx.strokeStyle = 'blue';
-    ctx.setLineDash([5, 5]); // 虚线框
-    ctx.strokeRect(xmin, ymin, xmax - xmin, ymax - ymin);
-    ctx.restore();
-}
-
-
-// 种子填充
-function fillSeed(x, y, fillColor) {
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const stack = [[x, y]];
-    const targetColor = Array.from(ctx.getImageData(x, y, 1, 1).data);
-
-    while (stack.length) {
-        const [px, py] = stack.pop();
-        const index = (py * canvas.width + px) * 4;
-
-        if (matchColor(imageData.data, index, targetColor)) {
-            setColor(imageData.data, index, fillColor);
-            stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-}
-
-function matchColor(data, index, color) {
-    return data[index] === color[0] && data[index + 1] === color[1] && data[index + 2] === color[2];
-}
-
-function setColor(data, index, fillColor) {
-    const rgb = hexToRgb(fillColor);
-    data[index] = rgb.r;
-    data[index + 1] = rgb.g;
-    data[index + 2] = rgb.b;
-    data[index + 3] = 255; // Alpha 通道
-}
-
-function hexToRgb(hex) {
-    const bigint = parseInt(hex.slice(1), 16);
-    return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-
-// 对对圆进行种子填充
-function fillCircle(circle, fillColor) {
-    const { centerX, centerY, radius } = circle;
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const stack = [[centerX, centerY]];
-    const targetColor = Array.from(ctx.getImageData(centerX, centerY, 1, 1).data);
-
-    while (stack.length) {
-        const [px, py] = stack.pop();
-        const index = (py * canvas.width + px) * 4;
-
-        if (isInsideCircle(px, py, centerX, centerY, radius) && matchColor(imageData.data, index, targetColor)) {
-            setColor(imageData.data, index, fillColor);
-            stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
-        }
-    }
-    ctx.putImageData(imageData, 0, 0);
-}
-
-function isInsideCircle(x, y, cx, cy, r) {
-    return Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) <= r;
-}
-
-// 扫描线填充
-function fillPolygon(circle, fillColor) {
-    const { centerX: cx, centerY: cy, radius: r } = circle;
-    ctx.fillStyle = fillColor;
-
-    // 遍历每条扫描线（即 y 从 cy-r 到 cy+r）
-    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
-        // 计算扫描线与圆的交点范围
-        const dy = y - cy;
-        if (Math.abs(dy) > r) continue; // 超出圆范围，跳过
-        const dx = Math.sqrt(r * r - dy * dy);
-        const xStart = Math.floor(cx - dx);
-        const xEnd = Math.ceil(cx + dx);
-
-        // 在该扫描线上填充从 xStart 到 xEnd 的像素
-        ctx.beginPath();
-        ctx.moveTo(xStart, y);
-        ctx.lineTo(xEnd, y);
-        ctx.stroke();
-    }
-}
-
-function fillCircleScan(circle, fillColor) {
-    const { centerX: cx, centerY: cy, radius: r } = circle;
-    ctx.fillStyle = fillColor;
-
-    // 遍历每条扫描线（即 y 从 cy-r 到 cy+r）
-    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
-        // 计算扫描线与圆的交点范围
-        const dy = y - cy;
-        if (Math.abs(dy) > r) continue; // 超出圆范围，跳过
-        const dx = Math.sqrt(r * r - dy * dy);
-        const xStart = Math.floor(cx - dx);
-        const xEnd = Math.ceil(cx + dx);
-
-        // 在该扫描线上填充从 xStart 到 xEnd 的像素
-        ctx.beginPath();
-        ctx.moveTo(xStart, y);
-        ctx.lineTo(xEnd, y);
-        ctx.stroke();
-    }
-}
-
-
-function clearCanvas() {
-    shapes = []; // 清空图形列表
-    ctx.clearRect(0, 0, canvas.width, canvas.height); // 清空画布
-    console.log('画布已清空');
-}
-
-// 执行命令
-function executeCommand() {
-    const command = document.getElementById('commandSelect').value;
-    const params = document.getElementById('commandParams').value.split(',').map(Number);
-
-    if (command === 'drawPoint') {
-        drawPoint(params[0], params[1]);
-    } else if (command === 'drawLine') {
-        startLine(params[0], params[1]);
-        finishLine(params[2], params[3]);
-    } else if (command === 'drawCircle') {
-        startCircle(params[0], params[1]);
-        finishCircle(params[2], params[3]);
-    } else if (command === 'seedFill') {
-        const fillColor = document.getElementById('colorPicker').value;
-        const selectedShape = shapes.find(shape => shape.selected);
-        if (selectedShape) {
+            const fillColor = document.getElementById('colorPicker').value;
             if (selectedShape.type === 'circle') {
                 fillCircle(selectedShape, fillColor);
             } else {
-                alert("该对象不支持填充操作！");
+                alert("该对象不支持填充操作！请选择圆形！");
+            }
+
+        } if (currentMode === 'scanFill') {
+            const selectedShape = shapes.find(shape => shape.selected);
+            if (selectedShape) {
+                const fillColor = document.getElementById('colorPicker').value;
+
+                if (selectedShape.type === 'circle') {
+                    fillCircleScan(selectedShape, fillColor); // 圆形扫描线填充
+                } else {
+                    alert("该对象目前不支持扫描线填充！请选择圆形");
+                }
+            } else {
+                alert("请先选择一个对象进行扫描线填充！");
+            }
+        }
+        else if (currentMode === 'select') {
+            // 进入选择模式：检测是否点击了某个图形
+            let selectedShape = null;
+            shapes.forEach(shape => {
+                if (shape.type === 'point' && isNearPoint(x, y, shape.x, shape.y)) {
+                    selectedShape = shape;
+                } else if (shape.type === 'line' && isNearLine(x, y, shape)) {
+                    selectedShape = shape;
+                } else if (shape.type === 'circle' && isNearCircle(x, y, shape)) {
+                    selectedShape = shape;
+                } else if (shape.type === 'text' && isNearText(x, y, shape)) {
+                    selectedShape = shape;
+                }
+            });
+
+            // 如果选中图形，则标记
+            if (selectedShape) {
+                shapes.forEach(shape => (shape.selected = false)); // 清除之前的选中
+                selectedShape.selected = true;
+                console.log('选中图形：', selectedShape);
+            } else {
+                console.log('未选中任何图形');
+            }
+
+            redrawCanvas(); // 重绘画布以显示选中状态
+        } else {
+            // 进入绘图模式：处理点、直线、圆等的绘制
+            if (currentMode === 'point') {
+                drawPointAlgorithm(x, y); // 使用算法绘制点
+            } else if (currentMode === 'line') {
+                startLine(x, y); // 保存直线起点
+            } else if (currentMode === 'circle') {
+                startCircle(x, y); // 保存圆心
+            } else if (currentMode === 'curve') {
+                curvePoints.push({ x, y });
+                drawPointAlgorithm(x, y); // 绘制控制点
+                if (curvePoints.length === 4) {
+                    drawBezierCurveAlgorithm(curvePoints); // 使用算法绘制贝塞尔曲线
+                    curvePoints = []; // 清空控制点
+                }
+            } else if (currentMode === 'text') {
+                const text = prompt("请输入要绘制的文字：");
+                if (text) drawText(x, y, text);
             }
         }
     }
-}
+
+    // 判断是否靠近点
+    function isNearPoint(x, y, px, py) {
+        const threshold = 5; // 检测阈值
+        return Math.abs(x - px) <= threshold && Math.abs(y - py) <= threshold;
+    }
+    // 判断是否靠近直线
+    function isNearLine(x, y, line) {
+        const { startX, startY, endX, endY } = line;
+        const dist = pointToLineDistance(x, y, startX, startY, endX, endY);
+        return dist <= 5; // 允许一定误差
+    }
+
+    // 计算点到直线的距离
+    function pointToLineDistance(px, py, x1, y1, x2, y2) {
+        const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        const param = lenSq !== 0 ? dot / lenSq : -1;
+
+        let xx, yy;
+        if (param < 0) {
+            xx = x1; yy = y1;
+        } else if (param > 1) {
+            xx = x2; yy = y2;
+        } else {
+            xx = x1 + param * C;
+            yy = y1 + param * D;
+        }
+
+        const dx = px - xx, dy = py - yy;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+
+    // 判断是否靠近圆
+    function isNearCircle(x, y, circle) {
+        const dx = x - circle.centerX;
+        const dy = y - circle.centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        return Math.abs(dist - circle.radius) <= 5; // 检测是否在圆边附近
+    }
+
+    // 判断是否靠近文字（可根据文字宽高调整）
+    function isNearText(x, y, text) {
+        ctx.font = '16px Arial';
+        const textWidth = ctx.measureText(text.text).width;
+        const textHeight = 16; // 假设字体大小为 16px
+        return x >= text.x && x <= text.x + textWidth && y <= text.y && y >= text.y - textHeight;
+    }
+
+    function handleMouseUp(event) {
+        const { offsetX: x, offsetY: y } = event;
+        if (currentMode === 'line') finishLine(x, y);
+        else if (currentMode === 'circle') finishCircle(x, y);
+    }
+
+    // 绘制点
+    function drawPointAlgorithm(x, y) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        setPixel(imageData, x, y, [0, 0, 0, 255]); // 黑色点
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    // 设置颜色
+    function setPixel(imageData, x, y, color) {
+        if (x >= 0 && x < canvas.width && y >= 0 && y < canvas.height) {
+            const index = (y * canvas.width + x) * 4;
+            imageData.data[index] = color[0];     // R
+            imageData.data[index + 1] = color[1]; // G
+            imageData.data[index + 2] = color[2]; // B
+            imageData.data[index + 3] = color[3]; // A
+        }
+    }
+
+
+
+    // Bresenham 算法绘制直线
+    let startX, startY;
+    function drawLineAlgorithm(x0, y0, x1, y1) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+        let sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+        let err = dx - dy;
+
+        while (true) {
+            setPixel(imageData, x0, y0, [0, 0, 0, 255]); // 黑色像素
+            if (x0 === x1 && y0 === y1) break;
+            const e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x0 += sx; }
+            if (e2 < dx) { err += dx; y0 += sy; }
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }
+    function startLine(x, y) {
+        startX = x; startY = y;
+    }
+    function finishLine(x, y) {
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        shapes.push({ type: 'line', startX, startY, endX: x, endY: y });
+    }
+
+    // 中点圆算法绘制圆
+    let circleX, circleY;
+    function drawCircleAlgorithm(cx, cy, radius) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let x = radius, y = 0, err = 0;
+
+        while (x >= y) {
+            setPixel(imageData, cx + x, cy + y, [0, 0, 0, 255]);
+            setPixel(imageData, cx + y, cy + x, [0, 0, 0, 255]);
+            setPixel(imageData, cx - y, cy + x, [0, 0, 0, 255]);
+            setPixel(imageData, cx - x, cy + y, [0, 0, 0, 255]);
+            setPixel(imageData, cx - x, cy - y, [0, 0, 0, 255]);
+            setPixel(imageData, cx - y, cy - x, [0, 0, 0, 255]);
+            setPixel(imageData, cx + y, cy - x, [0, 0, 0, 255]);
+            setPixel(imageData, cx + x, cy - y, [0, 0, 0, 255]);
+
+            if (err <= 0) {
+                y++;
+                err += 2 * y + 1;
+            }
+            if (err > 0) {
+                x--;
+                err -= 2 * x + 1;
+            }
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }
+    function startCircle(x, y) {
+        circleX = x; circleY = y;
+    }
+    function finishCircle(x, y) {
+        const radius = Math.sqrt((x - circleX) ** 2 + (y - circleY) ** 2);
+        ctx.beginPath();
+        ctx.arc(circleX, circleY, radius, 0, 2 * Math.PI);
+        ctx.stroke();
+        shapes.push({ type: 'circle', centerX: circleX, centerY: circleY, radius });
+    }
+
+    //  三次贝塞尔曲线公式绘制曲线
+    function drawBezierCurveAlgorithm(points) {
+        const [p0, p1, p2, p3] = points;
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        for (let t = 0; t <= 1; t += 0.001) {
+            const x = Math.pow(1 - t, 3) * p0.x +
+                3 * Math.pow(1 - t, 2) * t * p1.x +
+                3 * (1 - t) * Math.pow(t, 2) * p2.x +
+                Math.pow(t, 3) * p3.x;
+            const y = Math.pow(1 - t, 3) * p0.y +
+                3 * Math.pow(1 - t, 2) * t * p1.y +
+                3 * (1 - t) * Math.pow(t, 2) * p2.y +
+                Math.pow(t, 3) * p3.y;
+
+            setPixel(imageData, Math.round(x), Math.round(y), [0, 0, 0, 255]);
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    // 绘制文字
+    function drawText(x, y, text) {
+        const fontSize = parseInt(prompt("请输入字体大小：", "16")) || 16;
+        const fontColor = document.getElementById('colorPicker').value;
+        ctx.font = `${fontSize}px Arial`;
+        ctx.fillStyle = fontColor;
+        ctx.fillText(text, x, y);
+        shapes.push({ type: 'text', x, y, text, fontSize, fontColor });
+    }
+
+
+    // 几何变换：平移、旋转、缩放
+    function applyTransform(type) {
+        const selectedShape = shapes.find(shape => shape.selected);
+        if (!selectedShape) {
+            alert('请先选中一个对象！');
+            return;
+        }
+
+        if (type === 'translate') {
+            const dx = parseFloat(prompt('输入平移 x 距离:'));
+            const dy = parseFloat(prompt('输入平移 y 距离:'));
+            if (selectedShape.type === 'point') {
+                selectedShape.x += dx;
+                selectedShape.y += dy;
+            } else if (selectedShape.type === 'line') {
+                selectedShape.startX += dx;
+                selectedShape.startY += dy;
+                selectedShape.endX += dx;
+                selectedShape.endY += dy;
+            } else if (selectedShape.type === 'circle') {
+                selectedShape.centerX += dx;
+                selectedShape.centerY += dy;
+            }
+            redrawCanvas();
+        } else if (type === 'rotate') {
+            const angle = parseFloat(prompt('输入旋转角度（度数）:')) * (Math.PI / 180);
+            if (selectedShape.type === 'line') {
+                const centerX = (selectedShape.startX + selectedShape.endX) / 2;
+                const centerY = (selectedShape.startY + selectedShape.endY) / 2;
+
+                // 旋转起点和终点
+                [selectedShape.startX, selectedShape.startY] = rotatePoint(
+                    selectedShape.startX, selectedShape.startY, centerX, centerY, angle
+                );
+                [selectedShape.endX, selectedShape.endY] = rotatePoint(
+                    selectedShape.endX, selectedShape.endY, centerX, centerY, angle
+                );
+            }
+            redrawCanvas();
+        } else if (type === 'scale') {
+            const factor = parseFloat(prompt('输入缩放比例:'));
+            if (selectedShape.type === 'line') {
+                const centerX = (selectedShape.startX + selectedShape.endX) / 2;
+                const centerY = (selectedShape.startY + selectedShape.endY) / 2;
+
+                // 缩放起点和终点
+                selectedShape.startX = centerX + (selectedShape.startX - centerX) * factor;
+                selectedShape.startY = centerY + (selectedShape.startY - centerY) * factor;
+                selectedShape.endX = centerX + (selectedShape.endX - centerX) * factor;
+                selectedShape.endY = centerY + (selectedShape.endY - centerY) * factor;
+            } else if (selectedShape.type === 'circle') {
+                selectedShape.radius *= factor;
+            } else if (selectedShape.type === 'polygon') {
+                const centerX = selectedShape.points.reduce((sum, p) => sum + p.x, 0) / selectedShape.points.length;
+                const centerY = selectedShape.points.reduce((sum, p) => sum + p.y, 0) / selectedShape.points.length;
+                selectedShape.points = selectedShape.points.map(p => ({
+                    x: centerX + (p.x - centerX) * factor,
+                    y: centerY + (p.y - centerY) * factor,
+                }));
+            }
+            redrawCanvas();
+        }
+    }
+
+    // 旋转点
+    function rotatePoint(x, y, cx, cy, angle) {
+        const dx = x - cx, dy = y - cy;
+        const newX = dx * Math.cos(angle) - dy * Math.sin(angle) + cx;
+        const newY = dx * Math.sin(angle) + dy * Math.cos(angle) + cy;
+        return [newX, newY];
+    }
+
+
+    // 裁剪
+    function clipShape() {
+        const selectedShape = shapes.find(shape => shape.selected);
+        if (!selectedShape) {
+            alert('请先选中一个对象！');
+            return;
+        }
+
+        const clipXMin = parseFloat(prompt('裁剪窗口 xMin:'));
+        const clipYMin = parseFloat(prompt('裁剪窗口 yMin:'));
+        const clipXMax = parseFloat(prompt('裁剪窗口 xMax:'));
+        const clipYMax = parseFloat(prompt('裁剪窗口 yMax:'));
+
+
+        if (selectedShape.type === 'line') {
+            return cohenSutherland(selectedShape, clipXMin, clipYMin, clipXMax, clipYMax);
+        } else if (selectedShape.type === 'circle') {
+            return clipCircle(selectedShape, clipXMin, clipYMin, clipXMax, clipYMax);
+        } else if (selectedShape.type === 'polygon') {
+            return clipPolygon(selectedShape, clipXMin, clipYMin, clipXMax, clipYMax);
+        }
+        return selectedShape;
+
+        redrawCanvas();
+        alert("裁剪完成！");
+    }
+
+    // Cohen-Sutherland 直线裁剪
+    function cohenSutherland(line, xmin, ymin, xmax, ymax) {
+        const { startX, startY, endX, endY } = line;
+        let [x0, y0, x1, y1] = [startX, startY, endX, endY];
+
+        function computeOutCode(x, y) {
+            let code = 0;
+            if (x < xmin) code |= 1;
+            if (x > xmax) code |= 2;
+            if (y < ymin) code |= 4;
+            if (y > ymax) code |= 8;
+            return code;
+        }
+
+        let outCode0 = computeOutCode(x0, y0);
+        let outCode1 = computeOutCode(x1, y1);
+        let accept = false;
+
+        while (true) {
+            if (!(outCode0 | outCode1)) {
+                accept = true;
+                break;
+            } else if (outCode0 & outCode1) {
+                return null;
+            } else {
+                let x, y;
+                const outCodeOut = outCode0 ? outCode0 : outCode1;
+
+                if (outCodeOut & 8) {
+                    x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
+                    y = ymax;
+                } else if (outCodeOut & 4) {
+                    x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
+                    y = ymin;
+                } else if (outCodeOut & 2) {
+                    y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
+                    x = xmax;
+                } else if (outCodeOut & 1) {
+                    y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
+                    x = xmin;
+                }
+
+                if (outCodeOut === outCode0) {
+                    x0 = x;
+                    y0 = y;
+                    outCode0 = computeOutCode(x0, y0);
+                } else {
+                    x1 = x;
+                    y1 = y;
+                    outCode1 = computeOutCode(x1, y1);
+                }
+            }
+        }
+
+        if (accept) {
+            return { type: 'line', startX: x0, startY: y0, endX: x1, endY: y1 };
+        }
+        return null;
+    }
+
+    // 圆形裁剪
+    function clipCircle(circle, xmin, ymin, xmax, ymax) {
+        const { centerX, centerY, radius } = circle;
+        // 检查圆心是否在裁剪窗口内
+        if (
+            centerX + radius < xmin ||
+            centerX - radius > xmax ||
+            centerY + radius < ymin ||
+            centerY - radius > ymax
+        ) {
+            return null; // 圆完全在裁剪窗口外
+        }
+
+        // 返回裁剪后的圆
+        return { ...circle };
+    }
+
+    function drawClipWindow(xmin, ymin, xmax, ymax) {
+        ctx.save();
+        ctx.strokeStyle = 'blue';
+        ctx.setLineDash([5, 5]); // 使用虚线框表示裁剪窗口
+        ctx.strokeRect(xmin, ymin, xmax - xmin, ymax - ymin);
+        ctx.restore();
+    }
+
+    // 测试裁剪方法
+    function testClip() {
+        // 1. 清空画布并绘制示例图形
+        clearCanvas();
+
+        // 绘制示例图形
+        shapes = [
+            { type: 'line', startX: 50, startY: 50, endX: 300, endY: 300 },
+            { type: 'circle', centerX: 200, centerY: 200, radius: 100 }
+        ];
+
+        redrawCanvas();
+
+        // 2. 绘制裁剪窗口
+        const clipXMin = 100;
+        const clipYMin = 100;
+        const clipXMax = 250;
+        const clipYMax = 250;
+        drawClipWindow(clipXMin, clipYMin, clipXMax, clipYMax);
+
+        // 3. 执行裁剪
+        shapes = shapes.map(shape => {
+            if (shape.type === 'line') {
+                return cohenSutherland(shape, clipXMin, clipYMin, clipXMax, clipYMax);
+            } else if (shape.type === 'circle') {
+                return clipCircle(shape, clipXMin, clipYMin, clipXMax, clipYMax);
+            }
+            return shape;
+        }).filter(shape => shape !== null);
+
+        // 4. 显示裁剪结果
+        setTimeout(() => {
+            clearCanvas(); // 清空原图形
+            redrawCanvas(); // 绘制裁剪结果
+            alert("裁剪完成！");
+        }, 1000); // 延迟 1 秒以直观观察裁剪窗口
+    }
+
+
+    // 种子填充【目前只支持圆形】
+    function fillCircle(circle, fillColor) {
+        const { centerX, centerY, radius } = circle;
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const stack = [[centerX, centerY]];
+        const targetColor = Array.from(ctx.getImageData(centerX, centerY, 1, 1).data);
+
+        while (stack.length) {
+            const [px, py] = stack.pop();
+            const index = (py * canvas.width + px) * 4;
+
+            if (isInsideCircle(px, py, centerX, centerY, radius) && matchColor(imageData.data, index, targetColor)) {
+                setColor(imageData.data, index, fillColor);
+                stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
+            }
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    // 用于种子填充，简单判断是否在圆内
+    function isInsideCircle(x, y, cx, cy, r) {
+        return Math.sqrt((x - cx) ** 2 + (y - cy) ** 2) <= r;
+    }
+
+    // 判断颜色是否匹配
+    function matchColor(data, index, color) {
+        return data[index] === color[0] && data[index + 1] === color[1] && data[index + 2] === color[2];
+    }
+
+    // 设置像素颜色
+    function setColor(data, index, fillColor) {
+        const rgb = hexToRgb(fillColor);
+        data[index] = rgb.r;
+        data[index + 1] = rgb.g;
+        data[index + 2] = rgb.b;
+        data[index + 3] = 255; // Alpha 通道
+    }
+
+    // 十六进制颜色转 RGB
+    function hexToRgb(hex) {
+        const bigint = parseInt(hex.slice(1), 16);
+        return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
+    }
+
+
+    // 扫描线填充【目前只支持圆形】
+    function fillCircleScan(circle, fillColor) {
+        const { centerX: cx, centerY: cy, radius: r } = circle;
+        ctx.fillStyle = fillColor;
+
+        // 遍历每条扫描线（即 y 从 cy-r 到 cy+r）
+        for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+            // 计算扫描线与圆的交点范围
+            const dy = y - cy;
+            if (Math.abs(dy) > r) continue; // 超出圆范围，跳过
+            const dx = Math.sqrt(r * r - dy * dy);
+            const xStart = Math.floor(cx - dx);
+            const xEnd = Math.ceil(cx + dx);
+
+            // 在该扫描线上填充从 xStart 到 xEnd 的像素
+            ctx.beginPath();
+            ctx.moveTo(xStart, y);
+            ctx.lineTo(xEnd, y);
+            ctx.stroke();
+        }
+    }
+
+    // 重绘逻辑
+    function redrawCanvas() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        shapes.forEach(shape => {
+            if (shape.selected) {
+                ctx.strokeStyle = 'red'; // 选中对象显示红色
+                ctx.lineWidth = 2;
+            } else {
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1;
+            }
+
+            if (shape.type === 'point') {
+                drawPoint(shape.x, shape.y);
+            } else if (shape.type === 'line') {
+                ctx.beginPath();
+                ctx.moveTo(shape.startX, shape.startY);
+                ctx.lineTo(shape.endX, shape.endY);
+                ctx.stroke();
+            } else if (shape.type === 'circle') {
+                ctx.beginPath();
+                ctx.arc(shape.centerX, shape.centerY, shape.radius, 0, 2 * Math.PI);
+                ctx.stroke();
+            } else if (shape.type === 'bezier' || shape.type === 'quadratic') {
+                drawBezierCurveAlgorithm(shape.points);
+            } else if (shape.type === 'text') {
+                drawText(shape.x, shape.y, shape.text);
+            }
+        });
+    }
+
+    // 清空画布
+    function clearCanvas() {
+        shapes = []; // 清空图形列表
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // 清空画布
+        console.log('画布已清空');
+    }
+
+    // 执行命令
+    function executeCommand() {
+        const command = document.getElementById('commandSelect').value;
+        const params = document.getElementById('commandParams').value.split(',').map(Number);
+
+        if (command === 'drawPoint') {
+            drawPoint(params[0], params[1]);
+        } else if (command === 'drawLine') {
+            startLine(params[0], params[1]);
+            finishLine(params[2], params[3]);
+        } else if (command === 'drawCircle') {
+            startCircle(params[0], params[1]);
+            finishCircle(params[2], params[3]);
+        } else if (command === 'seedFill') {
+            const fillColor = document.getElementById('colorPicker').value;
+            const selectedShape = shapes.find(shape => shape.selected);
+            if (selectedShape) {
+                if (selectedShape.type === 'circle') {
+                    fillCircle(selectedShape, fillColor);
+                } else {
+                    alert("该对象不支持填充操作！");
+                }
+            }
+        }
+    }
+
+    // 保存文件
+    function saveToFile() {
+        const json = JSON.stringify({ shapes }, null, 2); // 将图形数据转为 JSON 格式
+        const blob = new Blob([json], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'shapes.json'; // 默认文件名
+        a.click();
+    }
+
+    // 从文件加载
+    function handleFileLoad(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function () {
+            try {
+                const data = JSON.parse(reader.result);
+                if (data.shapes) {
+                    shapes = data.shapes; // 更新当前图形列表
+                    redrawCanvas(); // 重绘画布
+                } else {
+                    alert('文件格式错误！');
+                }
+            } catch (error) {
+                alert('文件解析失败，请检查文件格式！');
+            }
+        };
+        reader.readAsText(file);
+        alert('图形加载成功！');
+    }
 </script>
