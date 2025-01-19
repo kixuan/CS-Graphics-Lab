@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交互式图形系统</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+        #toolbar button { padding: 10px; font-size: 14px; cursor: pointer; }
+        canvas { border: 1px solid black; }
+    </style>
+</head>
+<body>
+    <h1>交互式图形系统</h1>
+    <div id="toolbar">
+        <button onclick="setMode('point')">绘制点</button>
+        <button onclick="setMode('line')">绘制直线</button>
+        <button onclick="setMode('circle')">绘制圆</button>
+        <button onclick="setMode('curve')">绘制曲线</button>
+        <button onclick="setMode('text')">绘制文字</button>
+        <button onclick="setMode('fill')">填充颜色</button>
+        <button onclick="clipShape()">裁剪</button>
+        <button onclick="applyTransform('translate')">平移</button>
+        <button onclick="applyTransform('rotate')">旋转</button>
+        <button onclick="applyTransform('scale')">缩放</button>
+        <button onclick="clearCanvas()">清空画布</button>
+        
+    </div>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <script src="main.js"></script>
+</body>
+</html>
+
+<script>
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let currentMode = null; // 当前模式
+let shapes = []; // 存储所有图形
+let curvePoints = []; // 存储曲线控制点
+
+canvas.addEventListener('mousedown', handleMouseDown);
+canvas.addEventListener('mouseup', handleMouseUp);
+
+function setMode(mode) {
+    currentMode = mode;
+}
+
+function handleMouseDown(event) {
+    const { offsetX: x, offsetY: y } = event;
+
+    if (currentMode === 'point') {
+        drawPoint(x, y); // 绘制点
+    } else if (currentMode === 'line') {
+        startLine(x, y); // 开始绘制直线
+    } else if (currentMode === 'circle') {
+        startCircle(x, y); // 开始绘制圆
+    } else if (currentMode === 'curve') {
+        curvePoints.push({ x, y });
+        drawPoint(x, y); // 显示控制点
+        if (curvePoints.length === 4) {
+            drawBezierCurve(curvePoints); // 绘制曲线
+            curvePoints = []; // 清空控制点
+        }
+    } else if (currentMode === 'text') {
+        const text = prompt("请输入要绘制的文字：");
+        if (text) drawText(x, y, text); // 绘制文字
+    }
+}
+
+
+function handleMouseUp(event) {
+    const { offsetX: x, offsetY: y } = event;
+    if (currentMode === 'line') finishLine(x, y);
+    else if (currentMode === 'circle') finishCircle(x, y);
+}
+
+// 点
+function drawPoint(x, y) {
+    ctx.fillRect(x, y, 2, 2);
+    shapes.push({ type: 'point', x, y });
+}
+
+// 直线
+let startX, startY;
+function startLine(x, y) {
+    startX = x; startY = y;
+}
+function finishLine(x, y) {
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    shapes.push({ type: 'line', startX, startY, endX: x, endY: y });
+}
+
+// 圆
+let circleX, circleY;
+function startCircle(x, y) {
+    circleX = x; circleY = y;
+}
+function finishCircle(x, y) {
+    const radius = Math.sqrt((x - circleX) ** 2 + (y - circleY) ** 2);
+    ctx.beginPath();
+    ctx.arc(circleX, circleY, radius, 0, 2 * Math.PI);
+    ctx.stroke();
+    shapes.push({ type: 'circle', centerX: circleX, centerY: circleY, radius });
+}
+
+// 曲线
+function drawBezierCurve(points) {
+    if (points.length === 4) { // 三次贝塞尔曲线
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.bezierCurveTo(
+            points[1].x, points[1].y,
+            points[2].x, points[2].y,
+            points[3].x, points[3].y
+        );
+        ctx.stroke();
+        shapes.push({ type: 'bezier', points });
+    } else if (points.length === 3) { // 二次贝塞尔曲线
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        ctx.quadraticCurveTo(
+            points[1].x, points[1].y,
+            points[2].x, points[2].y
+        );
+        ctx.stroke();
+        shapes.push({ type: 'quadratic', points });
+    }
+}
+
+// 文字
+function drawText(x, y, text) {
+    ctx.font = '16px Arial'; // 设置字体大小和样式
+    ctx.fillText(text, x, y);
+    shapes.push({ type: 'text', x, y, text });
+}
+
+// 几何变换
+function applyTransform(type) {
+    // 平移
+    if (type === 'translate') {
+        const dx = parseFloat(prompt('输入平移 x 距离:'));
+        const dy = parseFloat(prompt('输入平移 y 距离:'));
+        shapes.forEach(shape => {
+            if (shape.type === 'point') {
+                shape.x += dx;
+                shape.y += dy;
+            } else if (shape.type === 'line') {
+                shape.startX += dx;
+                shape.startY += dy;
+                shape.endX += dx;
+                shape.endY += dy;
+            } else if (shape.type === 'circle') {
+                shape.centerX += dx;
+                shape.centerY += dy;
+            }
+        });
+        redrawCanvas();
+    }
+}
+
+// 重绘逻辑
+function redrawCanvas() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    shapes.forEach(shape => {
+        if (shape.type === 'point') {
+            drawPoint(shape.x, shape.y);
+        } else if (shape.type === 'line') {
+            ctx.beginPath();
+            ctx.moveTo(shape.startX, shape.startY);
+            ctx.lineTo(shape.endX, shape.endY);
+            ctx.stroke();
+        } else if (shape.type === 'circle') {
+            ctx.beginPath();
+            ctx.arc(shape.centerX, shape.centerY, shape.radius, 0, 2 * Math.PI);
+            ctx.stroke();
+        } else if (shape.type === 'bezier' || shape.type === 'quadratic') {
+            drawBezierCurve(shape.points);
+        } else if (shape.type === 'text') {
+            drawText(shape.x, shape.y, shape.text);
+        }
+    });
+}
+
+
+// 裁剪
+function clipShape() {
+    // 示例：Cohen-Sutherland 算法实现裁剪
+    const clipXMin = parseFloat(prompt('裁剪窗口 xMin:'));
+    const clipYMin = parseFloat(prompt('裁剪窗口 yMin:'));
+    const clipXMax = parseFloat(prompt('裁剪窗口 xMax:'));
+    const clipYMax = parseFloat(prompt('裁剪窗口 yMax:'));
+    shapes = shapes.map(shape => {
+        if (shape.type === 'line') {
+            return cohenSutherland(shape, clipXMin, clipYMin, clipXMax, clipYMax);
+        }
+        return shape;
+    });
+    redrawCanvas();
+}
+
+
+// 种子填充
+function fillSeed(x, y, fillColor) {
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const stack = [[x, y]];
+    const targetColor = ctx.getImageData(x, y, 1, 1).data;
+
+    while (stack.length) {
+        const [px, py] = stack.pop();
+        const index = (py * canvas.width + px) * 4;
+
+        if (matchColor(imageData.data, index, targetColor)) {
+            setColor(imageData.data, index, fillColor);
+            stack.push([px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]);
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+// 保存文件
+function saveToFile() {
+    const json = JSON.stringify({ shapes }, null, 2); // 将图形数据转为 JSON 格式
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'shapes.json'; // 默认文件名
+    a.click();
+}
+
+// 从文件加载
+function loadFromFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function () {
+        try {
+            const data = JSON.parse(reader.result);
+            if (data.shapes) {
+                shapes = data.shapes; // 更新当前图形列表
+                redrawCanvas(); // 重绘画布
+                alert('图形加载成功！');
+            } else {
+                alert('文件格式错误！');
+            }
+        } catch (error) {
+            alert('文件解析失败，请检查文件格式！');
+        }
+    };
+    reader.readAsText(file);
+}
+
+
+</script>
